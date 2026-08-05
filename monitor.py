@@ -1,3 +1,24 @@
+import sys
+import os
+
+# Correção obrigatória para o erro do PyInstaller no modo invisível (--windowed)
+if sys.stdout is None:
+    sys.stdout = open(os.devnull, 'w')
+if sys.stderr is None:
+    sys.stderr = open(os.devnull, 'w')
+
+import tkinter as tk
+from tkinter import ttk
+import threading
+import time
+import speedtest
+import requests
+from pystray import Icon, Menu, MenuItem
+from PIL import Image, ImageDraw
+from plyer import notification
+
+class MonitorApp:
+# ... (mantenha todo o resto do seu código igualzinho daqui para baixo) ...
 import tkinter as tk
 from tkinter import ttk
 import threading
