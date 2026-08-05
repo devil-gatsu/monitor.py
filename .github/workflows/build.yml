@@ -10,10 +10,10 @@ jobs:
 
     steps:
     - name: Clonar o código
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: Configurar o Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: '3.10'
 
@@ -28,7 +28,7 @@ jobs:
         pyinstaller --noconfirm --onefile --windowed --name "MonitorRede" monitor.py
 
     - name: Disponibilizar para Download
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: Programa-Monitor-Rede
         path: dist/MonitorRede.exe
