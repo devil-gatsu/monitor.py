@@ -18,19 +18,6 @@ from PIL import Image, ImageDraw
 from plyer import notification
 
 class MonitorApp:
-# ... (mantenha todo o resto do seu código igualzinho daqui para baixo) ...
-import tkinter as tk
-from tkinter import ttk
-import threading
-import time
-import speedtest
-import requests
-from pystray import Icon, Menu, MenuItem
-from PIL import Image, ImageDraw
-from plyer import notification
-import sys
-
-class MonitorApp:
     def __init__(self):
         # Configuração da Janela Principal
         self.root = tk.Tk()
@@ -144,7 +131,6 @@ class MonitorApp:
             
             time.sleep(30)
 
-
 def criar_icone():
     imagem = Image.new('RGB', (64, 64), color=(30, 30, 30))
     desenho = ImageDraw.Draw(imagem)
@@ -162,7 +148,7 @@ def iniciar_bandeja(app):
         sys.exit()
 
     menu = Menu(
-        MenuItem("Abrir Painel", on_abrir, default=True), # 'default=True' faz abrir no clique duplo
+        MenuItem("Abrir Painel", on_abrir, default=True),
         MenuItem("Sair", on_sair)
     )
     icone = Icon("MonitorRede", criar_icone(), menu=menu)
