@@ -22,7 +22,6 @@ import socket
 # --- FUNÇÕES DE MELHORIA E LEVEZA ---
 
 def limpar_nome_provedor(nome_bruto):
-    """Traduz a razão social para o nome comercial da marca"""
     nome = nome_bruto.upper()
     if "TELEF" in nome or "VIVO" in nome:
         return "Vivo"
@@ -30,83 +29,91 @@ def limpar_nome_provedor(nome_bruto):
         return "Claro"
     elif "ALLREDE" in nome:
         return "Allrede Telecom"
-    # Se for outro provedor, ajusta para as primeiras palavras ficarem bonitas
     return nome_bruto.title()
 
 def checar_latencia_leve():
-    """Faz um ping minúsculo para medir instabilidade sem pesar a rede"""
     inicio = time.time()
     try:
-        # Conecta no DNS do Google (timeout de 2 segundos)
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.settimeout(2.0)
             s.connect(("8.8.8.8", 53))
     except Exception:
-        return 9999 # Sinal de queda ou muita lentidão
+        return 9999
     fim = time.time()
-    return int((fim - inicio) * 1000) # Retorna em milissegundos
+    return int((fim - inicio) * 1000)
 
 
 class MonitorApp:
     def __init__(self):
         self.root = tk.Tk()
         self.root.title("Monitor de Rede")
-        self.root.geometry("400x300")
+        self.root.geometry("420x340")
         self.root.resizable(False, False)
         self.root.protocol('WM_DELETE_WINDOW', self.esconder_janela)
 
-        # Aplicando um tema mais moderno e limpo
+        # --- PALETA DE CORES SOFT & ELEGANT ---
+        COR_FUNDO = "#F4F6F9"       # Off-white cinza azulado suave
+        COR_CARTAO = "#FFFFFF"      # Branco puro
+        COR_TEXTO_PRINCIPAL = "#2C3E50" # Cinza chumbo escuro (elegante)
+        COR_TEXTO_SECUNDARIO = "#7F8C8D" # Cinza suave
+        COR_DESTAQUE = "#3498DB"    # Azul limpo e profissional
+        COR_SUCESSO = "#27AE60"     # Verde suave
+        COR_ALERTA = "#E74C3C"      # Vermelho suave
+        
+        self.root.configure(bg=COR_FUNDO)
+
+        # Estilo do Botão Flat
         style = ttk.Style()
-        if 'clam' in style.theme_names():
-            style.theme_use('clam')
-        
-        style.configure("TLabel", background="#f0f0f0", font=("Segoe UI", 10))
-        style.configure("Titulo.TLabel", font=("Segoe UI", 12, "bold"))
-        style.configure("TFrame", background="#f0f0f0")
-        style.configure("TButton", font=("Segoe UI", 10), padding=5)
-        
-        self.root.configure(bg="#f0f0f0")
+        style.theme_use('clam')
+        style.configure("Flat.TButton", 
+                        font=("Segoe UI", 10), 
+                        background=COR_FUNDO, 
+                        foreground=COR_TEXTO_PRINCIPAL,
+                        borderwidth=1,
+                        bordercolor="#D5DBDB",
+                        focuscolor=COR_FUNDO,
+                        padding=8)
+        style.map("Flat.TButton", background=[('active', '#EAECEE')])
 
-        self.notebook = ttk.Notebook(self.root)
-        self.notebook.pack(expand=True, fill='both', padx=15, pady=15)
+        # --- CONTAINER PRINCIPAL (Efeito de Cartão) ---
+        self.card = tk.Frame(self.root, bg=COR_CARTAO, highlightbackground="#E2E6EA", highlightthickness=1)
+        self.card.pack(expand=True, fill='both', padx=25, pady=25)
 
-        # --- ABA 1: Provedor e Ping ---
-        self.tab_st = ttk.Frame(self.notebook)
-        self.notebook.add(self.tab_st, text=" Status da Conexão ")
+        # Cabeçalho do Cartão
+        lbl_titulo = tk.Label(self.card, text="CONEXÃO ATUAL", font=("Segoe UI", 10, "bold"), bg=COR_CARTAO, fg=COR_TEXTO_SECUNDARIO)
+        lbl_titulo.pack(pady=(25, 5))
 
-        self.lbl_provedor = ttk.Label(self.tab_st, text="Provedor: Identificando...", style="Titulo.TLabel", foreground="#005a9e")
-        self.lbl_provedor.pack(pady=(20, 5))
+        # Nome do Provedor (O grande destaque)
+        self.lbl_provedor = tk.Label(self.card, text="Identificando...", font=("Segoe UI", 24, "bold"), bg=COR_CARTAO, fg=COR_DESTAQUE)
+        self.lbl_provedor.pack(pady=5)
 
-        self.lbl_estabilidade = ttk.Label(self.tab_st, text="Estabilidade: Medindo...", font=("Segoe UI", 10))
-        self.lbl_estabilidade.pack(pady=5)
+        # Status e Latência
+        self.lbl_estabilidade = tk.Label(self.card, text="Verificando rota e estabilidade...", font=("Segoe UI", 11), bg=COR_CARTAO, fg=COR_TEXTO_SECUNDARIO)
+        self.lbl_estabilidade.pack(pady=(0, 25))
 
-        self.btn_test = ttk.Button(self.tab_st, text="Executar Teste Completo de Velocidade", command=self.iniciar_teste_velocidade)
+        # Linha separadora discreta
+        separador = tk.Frame(self.card, bg="#F0F3F4", height=1)
+        separador.pack(fill='x', padx=30, pady=5)
+
+        # Botão e Resultado do Teste
+        self.btn_test = ttk.Button(self.card, text="Realizar Teste de Velocidade", style="Flat.TButton", command=self.iniciar_teste_velocidade)
         self.btn_test.pack(pady=(15, 5))
 
-        self.lbl_st_result = ttk.Label(self.tab_st, text="")
+        self.lbl_st_result = tk.Label(self.card, text="", font=("Segoe UI", 10), bg=COR_CARTAO, fg=COR_TEXTO_PRINCIPAL)
         self.lbl_st_result.pack(pady=5)
 
-        # --- ABA 2: Sobre a API ---
-        self.tab_api = ttk.Frame(self.notebook)
-        self.notebook.add(self.tab_api, text=" Diagnóstico API ")
-
-        texto_api = (
-            "As informações são cruzadas usando duas fontes:\n"
-            "1. SpeedTest Configuration (Leitura Direta)\n"
-            "2. IP-API Routing\n\n"
-            "Isso garante dupla checagem ultra leve, sem\n"
-            "consumir sua banda de internet no dia a dia."
-        )
-        self.lbl_api_status = ttk.Label(self.tab_api, text=texto_api, justify="center")
-        self.lbl_api_status.pack(pady=30)
-
         # --- RODAPÉ ---
-        rodape = tk.Label(self.root, text="Desenvolvido por Matheus Carvalho", font=("Segoe UI", 8), bg="#f0f0f0", fg="gray")
-        rodape.pack(side="bottom", pady=5)
+        rodape = tk.Label(self.root, text="Desenvolvido por Matheus Carvalho", font=("Segoe UI", 8), bg=COR_FUNDO, fg="#BDC3C7")
+        rodape.pack(side="bottom", pady=8)
 
+        # Variáveis de Controle
         self.provedor_atual = None
         self.rede_estavel = True
         self.primeira_execucao = True
+        
+        self.COR_SUCESSO = COR_SUCESSO
+        self.COR_ALERTA = COR_ALERTA
+        self.COR_TEXTO_SECUNDARIO = COR_TEXTO_SECUNDARIO
         
         threading.Thread(target=self.monitorar_loop, daemon=True).start()
 
@@ -119,7 +126,7 @@ class MonitorApp:
 
     def iniciar_teste_velocidade(self):
         self.btn_test.config(state="disabled")
-        self.lbl_st_result.config(text="Fazendo download e upload... (aprox. 30s)")
+        self.lbl_st_result.config(text="Fazendo download e upload... (aprox. 30s)", fg=self.COR_TEXTO_SECUNDARIO)
         threading.Thread(target=self.executar_teste_velocidade, daemon=True).start()
 
     def executar_teste_velocidade(self):
@@ -129,10 +136,10 @@ class MonitorApp:
             download = st.download() / 1_000_000
             upload = st.upload() / 1_000_000
             ping = st.results.ping
-            resultado = f"Ping: {ping:.0f} ms | Down: {download:.1f} Mbps | Up: {upload:.1f} Mbps"
-            self.root.after(0, lambda: self.lbl_st_result.config(text=resultado))
+            resultado = f"Ping: {ping:.0f} ms  •  Down: {download:.1f} Mbps  •  Up: {upload:.1f} Mbps"
+            self.root.after(0, lambda: self.lbl_st_result.config(text=resultado, fg="#2C3E50"))
         except Exception:
-            self.root.after(0, lambda: self.lbl_st_result.config(text="Falha ao testar. Verifique a conexão."))
+            self.root.after(0, lambda: self.lbl_st_result.config(text="Falha ao testar. Verifique a conexão.", fg=self.COR_ALERTA))
         finally:
             self.root.after(0, lambda: self.btn_test.config(state="normal"))
 
@@ -146,7 +153,6 @@ class MonitorApp:
                 prov_bruto = cliente.attrib.get('isp', "Desconhecido") if cliente is not None else "Desconhecido"
             except Exception:
                 try:
-                    # Fonte redundante caso o speedtest bloqueie a leitura rápida
                     r_api = requests.get("http://ip-api.com/json/", timeout=5)
                     prov_bruto = r_api.json().get('isp', "Desconhecido")
                 except Exception:
@@ -154,24 +160,24 @@ class MonitorApp:
 
             provedor = limpar_nome_provedor(prov_bruto)
             
-            # Checagem leve de estabilidade (ping TCP)
+            # Checagem leve de estabilidade
             latencia = checar_latencia_leve()
-            status_estabilidade = "Estável"
-            cor_estabilidade = "green"
+            status_estabilidade = "Conexão Estável"
+            cor_estabilidade = self.COR_SUCESSO
             
-            if latencia > 300: # Se o ping for maior que 300ms, a rede está engasgando
-                status_estabilidade = "Instável / Lenta"
-                cor_estabilidade = "red"
+            if latencia > 300:
+                status_estabilidade = "Conexão Instável"
+                cor_estabilidade = self.COR_ALERTA
             elif latencia == 9999:
-                status_estabilidade = "Sem Conexão"
-                cor_estabilidade = "red"
+                status_estabilidade = "Sem Conexão à Internet"
+                cor_estabilidade = self.COR_ALERTA
 
             # Atualiza interface
-            self.root.after(0, lambda p=provedor: self.lbl_provedor.config(text=f"Provedor: {p}"))
-            self.root.after(0, lambda s=status_estabilidade, l=latencia: self.lbl_estabilidade.config(
-                text=f"Status: {s} (Latência: {'--' if l==9999 else l} ms)", foreground=cor_estabilidade))
+            self.root.after(0, lambda p=provedor: self.lbl_provedor.config(text=p, fg="#3498DB" if p != "Sem Conexão" else self.COR_ALERTA))
+            self.root.after(0, lambda s=status_estabilidade, l=latencia, c=cor_estabilidade: self.lbl_estabilidade.config(
+                text=f"{s} (Latência: {'--' if l==9999 else l} ms)", fg=c))
 
-            # Notificação Inicial para confirmar que está funcionando
+            # Notificações
             if self.primeira_execucao and provedor != "Sem Conexão":
                 notification.notify(
                     title="Monitor Ativo",
@@ -182,7 +188,6 @@ class MonitorApp:
                 self.primeira_execucao = False
                 self.provedor_atual = provedor
 
-            # Notificação de Troca de Provedor
             if provedor != "Sem Conexão" and provedor != "Desconhecido" and self.provedor_atual is not None:
                 if provedor != self.provedor_atual:
                     notification.notify(
@@ -193,7 +198,6 @@ class MonitorApp:
                     )
                     self.provedor_atual = provedor
             
-            # Notificação de Instabilidade Severa
             estavel_agora = (latencia <= 300)
             if self.rede_estavel and not estavel_agora and provedor != "Sem Conexão":
                 notification.notify(
@@ -203,7 +207,6 @@ class MonitorApp:
                     timeout=5
                 )
             elif not self.rede_estavel and estavel_agora:
-                # Avisa quando normalizar
                 notification.notify(
                     title="Conexão Normalizada",
                     message=f"A rede do provedor {provedor} voltou à estabilidade.",
@@ -212,7 +215,6 @@ class MonitorApp:
                 )
             
             self.rede_estavel = estavel_agora
-
             time.sleep(30)
 
 
