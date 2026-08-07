@@ -19,7 +19,7 @@ from PIL import Image, ImageDraw
 from plyer import notification
 import socket
 
-# --- FUNÇÕES DE MELHORIA E LEVEZA ---
+# --- FUNÇÕES DE MELHORIA E LEVEZA --- MELHORIAS 
 
 def limpar_nome_provedor(nome_bruto):
     nome = nome_bruto.upper()
