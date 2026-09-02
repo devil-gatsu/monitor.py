@@ -14,6 +14,7 @@ import threading
 import time
 import speedtest
 import requests
+import xml.etree.ElementTree as ET
 from pystray import Icon, Menu, MenuItem
 from PIL import Image, ImageDraw
 from plyer import notification
@@ -32,14 +33,12 @@ def registrar_log(evento, provedor="--"):
     data = time.strftime("%d/%m/%Y")
     hora = time.strftime("%H:%M:%S")
     
-    # Gravação no TXT
     try:
         with open(ARQUIVO_TXT, "a", encoding="utf-8") as f:
             f.write(f"[{data} {hora}] {evento} | Provedor: {provedor}\n")
     except Exception:
         pass
 
-    # Gravação no CSV (Padrão Excel Brasil com ponto e vírgula)
     try:
         arquivo_existe = os.path.exists(ARQUIVO_CSV)
         with open(ARQUIVO_CSV, "a", newline='', encoding="utf-8-sig") as f:
@@ -48,7 +47,7 @@ def registrar_log(evento, provedor="--"):
                 writer.writerow(["Data", "Hora", "Evento", "Provedor"])
             writer.writerow([data, hora, evento, provedor])
     except Exception:
-        pass # Evita travar se o arquivo estiver aberto no Excel
+        pass
 
 def abrir_arquivo(caminho):
     if os.path.exists(caminho):
@@ -57,7 +56,6 @@ def abrir_arquivo(caminho):
         messagebox.showinfo("Aviso", "Nenhum log registrado ainda.")
 
 def configurar_autostart(ativar):
-    """Adiciona ou remove o programa da inicialização do Windows"""
     caminho_exe = sys.executable
     key_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
     try:
@@ -125,7 +123,6 @@ class MonitorApp:
         self.card = tk.Frame(self.root, bg=COR_CARTAO, highlightbackground="#DEE2E6", highlightthickness=1)
         self.card.pack(expand=True, fill='both', padx=12, pady=12)
 
-        # LINHA 1: Cabeçalho funcional
         cabecalho = tk.Frame(self.card, bg=COR_CARTAO)
         cabecalho.pack(fill='x', padx=15, pady=(15, 5))
         
@@ -135,7 +132,6 @@ class MonitorApp:
         self.lbl_status_geral = tk.Label(cabecalho, text="Aguardando...", font=("Segoe UI", 11, "bold"), bg=COR_CARTAO, fg=self.COR_TEXTO)
         self.lbl_status_geral.pack(side="left", padx=5)
 
-        # LINHA 2: Detalhes da rede
         detalhes = tk.Frame(self.card, bg=COR_CARTAO)
         detalhes.pack(fill='x', padx=15, pady=2)
         
@@ -148,7 +144,6 @@ class MonitorApp:
         separador = tk.Frame(self.card, bg="#E9ECEF", height=1)
         separador.pack(fill='x', padx=15, pady=10)
 
-        # LINHA 3: Botões Principais
         botoes = tk.Frame(self.card, bg=COR_CARTAO)
         botoes.pack(fill='x', padx=15)
         
@@ -158,7 +153,6 @@ class MonitorApp:
         self.btn_resumo = ttk.Button(botoes, text="📈 Resumo Gerencial", command=self.gerar_resumo, width=18)
         self.btn_resumo.pack(side="left")
 
-        # LINHA 4: Ferramentas Extras e Checkbox
         ferramentas = tk.Frame(self.card, bg=COR_CARTAO)
         ferramentas.pack(fill='x', padx=15, pady=(8, 0))
 
@@ -172,7 +166,6 @@ class MonitorApp:
         chk_autostart = tk.Checkbutton(ferramentas, text="Iniciar com Windows", var=self.var_autostart, command=self.toggle_autostart, bg=COR_CARTAO, fg=self.COR_SECUNDARIA, activebackground=COR_CARTAO, selectcolor=COR_CARTAO, font=("Segoe UI", 8))
         chk_autostart.pack(side="right")
 
-        # Resultado do Teste
         self.lbl_st_result = tk.Label(self.card, text="", font=("Segoe UI", 9, "bold"), bg=COR_CARTAO, fg="#0D6EFD")
         self.lbl_st_result.pack(pady=(5, 0))
 
@@ -244,12 +237,18 @@ class MonitorApp:
 
     def monitorar_loop(self):
         while True:
+            prov_bruto = "Desconhecido"
             try:
-                st = speedtest.Speedtest(secure=True)
-                prov_bruto = st.config['client']['isp']
+                # 1. Leitura Ultrarrápida e Anti-Cache do Roteador (Dual-WAN)
+                url_anti_cache = f"https://www.speedtest.net/speedtest-config.php?nocache={int(time.time())}"
+                r = requests.get(url_anti_cache, timeout=4)
+                root = ET.fromstring(r.content)
+                cliente = root.find('client')
+                if cliente is not None:
+                    prov_bruto = cliente.attrib.get('isp', "Desconhecido")
             except Exception:
                 try:
-                    r_api = requests.get("http://ip-api.com/json/", timeout=5)
+                    r_api = requests.get("http://ip-api.com/json/", timeout=4)
                     prov_bruto = r_api.json().get('isp', "Desconhecido")
                 except Exception:
                     prov_bruto = "Sem Conexão"
@@ -273,7 +272,6 @@ class MonitorApp:
                     notification.notify(title="Monitor Ativo", message=f"Conectado via {provedor}.", app_name="Monitor de Rede", timeout=5)
                     registrar_log("Monitoramento Iniciado", provedor)
             else:
-                # Notificações e Auditoria
                 if novo_estado == "CAIDA" and self.estado_atual != "CAIDA":
                     notification.notify(title="Falha Crítica!", message="A conexão com a internet caiu.", app_name="Monitor", timeout=5)
                     registrar_log("Queda Total (Desconectado)", "Sem Conexão")
