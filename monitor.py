@@ -9,6 +9,7 @@ if sys.stderr is None:
 
 import tkinter as tk
 from tkinter import ttk
+from tkinter import messagebox
 import threading
 import time
 import speedtest
@@ -17,25 +18,67 @@ from pystray import Icon, Menu, MenuItem
 from PIL import Image, ImageDraw
 from plyer import notification
 import socket
+import csv
+import winreg
+
+# --- CONFIGURAÇÕES DE ARQUIVOS ---
+ARQUIVO_TXT = "auditoria_rede.txt"
+ARQUIVO_CSV = "auditoria_rede.csv"
 
 # --- FUNÇÕES DE LÓGICA E DIAGNÓSTICO ---
 
-ARQUIVO_LOG = "auditoria_rede.txt"
-
-def registrar_log(mensagem):
+def registrar_log(evento, provedor="--"):
+    """Gera o histórico simultaneamente em TXT e CSV (Excel)"""
+    data = time.strftime("%d/%m/%Y")
+    hora = time.strftime("%H:%M:%S")
+    
+    # Gravação no TXT
     try:
-        agora = time.strftime("%d/%m/%Y %H:%M:%S")
-        with open(ARQUIVO_LOG, "a", encoding="utf-8") as f:
-            f.write(f"[{agora}] {mensagem}\n")
+        with open(ARQUIVO_TXT, "a", encoding="utf-8") as f:
+            f.write(f"[{data} {hora}] {evento} | Provedor: {provedor}\n")
     except Exception:
         pass
 
-def abrir_log():
-    if os.path.exists(ARQUIVO_LOG):
-        os.startfile(ARQUIVO_LOG)
+    # Gravação no CSV (Padrão Excel Brasil com ponto e vírgula)
+    try:
+        arquivo_existe = os.path.exists(ARQUIVO_CSV)
+        with open(ARQUIVO_CSV, "a", newline='', encoding="utf-8-sig") as f:
+            writer = csv.writer(f, delimiter=';')
+            if not arquivo_existe:
+                writer.writerow(["Data", "Hora", "Evento", "Provedor"])
+            writer.writerow([data, hora, evento, provedor])
+    except Exception:
+        pass # Evita travar se o arquivo estiver aberto no Excel
+
+def abrir_arquivo(caminho):
+    if os.path.exists(caminho):
+        os.startfile(caminho)
     else:
-        registrar_log("=== ARQUIVO DE LOG CRIADO ===")
-        os.startfile(ARQUIVO_LOG)
+        messagebox.showinfo("Aviso", "Nenhum log registrado ainda.")
+
+def configurar_autostart(ativar):
+    """Adiciona ou remove o programa da inicialização do Windows"""
+    caminho_exe = sys.executable
+    key_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
+    try:
+        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_ALL_ACCESS)
+        if ativar:
+            winreg.SetValueEx(key, "MonitorRede_Matheus", 0, winreg.REG_SZ, caminho_exe)
+        else:
+            winreg.DeleteValue(key, "MonitorRede_Matheus")
+        winreg.CloseKey(key)
+    except Exception:
+        pass
+
+def verificar_autostart():
+    key_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
+    try:
+        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_READ)
+        winreg.QueryValueEx(key, "MonitorRede_Matheus")
+        winreg.CloseKey(key)
+        return True
+    except:
+        return False
 
 def limpar_nome_provedor(nome_bruto):
     nome = nome_bruto.upper()
@@ -54,17 +97,16 @@ def checar_latencia_ip(ip="8.8.8.8", porta=53):
         return 9999
     return int((time.time() - inicio) * 1000)
 
-# --- INTERFACE GRÁFICA (DASHBOARD FUNCIONAL) ---
+# --- INTERFACE GRÁFICA (DASHBOARD GERENCIAL) ---
 
 class MonitorApp:
     def __init__(self):
         self.root = tk.Tk()
         self.root.title("Monitor de Rede")
-        self.root.geometry("360x220") # Tamanho compacto mantido
+        self.root.geometry("380x280")
         self.root.resizable(False, False)
         self.root.protocol('WM_DELETE_WINDOW', self.esconder_janela)
 
-        # Paleta de Cores Dashboard
         COR_FUNDO = "#F8F9FA"
         COR_CARTAO = "#FFFFFF"
         self.COR_TEXTO = "#212529"
@@ -78,7 +120,7 @@ class MonitorApp:
         style = ttk.Style()
         if 'clam' in style.theme_names():
             style.theme_use('clam')
-        style.configure("TButton", font=("Segoe UI", 9), padding=5)
+        style.configure("TButton", font=("Segoe UI", 9), padding=4)
 
         self.card = tk.Frame(self.root, bg=COR_CARTAO, highlightbackground="#DEE2E6", highlightthickness=1)
         self.card.pack(expand=True, fill='both', padx=12, pady=12)
@@ -95,7 +137,7 @@ class MonitorApp:
 
         # LINHA 2: Detalhes da rede
         detalhes = tk.Frame(self.card, bg=COR_CARTAO)
-        detalhes.pack(fill='x', padx=15, pady=5)
+        detalhes.pack(fill='x', padx=15, pady=2)
         
         self.lbl_provedor = tk.Label(detalhes, text="Provedor: --", font=("Segoe UI", 10), bg=COR_CARTAO, fg=self.COR_SECUNDARIA)
         self.lbl_provedor.pack(anchor="w")
@@ -106,28 +148,42 @@ class MonitorApp:
         separador = tk.Frame(self.card, bg="#E9ECEF", height=1)
         separador.pack(fill='x', padx=15, pady=10)
 
-        # LINHA 3: Botões e Teste
+        # LINHA 3: Botões Principais
         botoes = tk.Frame(self.card, bg=COR_CARTAO)
         botoes.pack(fill='x', padx=15)
         
-        self.btn_log = ttk.Button(botoes, text="📄 Abrir Log", command=abrir_log, width=12)
-        self.btn_log.pack(side="left", padx=(0, 5))
+        self.btn_test = ttk.Button(botoes, text="⚡ Teste de Velocidade", command=self.iniciar_teste_velocidade, width=18)
+        self.btn_test.pack(side="left", padx=(0, 5))
 
-        self.btn_test = ttk.Button(botoes, text="⚡ Teste de Velocidade", command=self.iniciar_teste_velocidade)
-        self.btn_test.pack(side="left")
+        self.btn_resumo = ttk.Button(botoes, text="📈 Resumo Gerencial", command=self.gerar_resumo, width=18)
+        self.btn_resumo.pack(side="left")
 
+        # LINHA 4: Ferramentas Extras e Checkbox
+        ferramentas = tk.Frame(self.card, bg=COR_CARTAO)
+        ferramentas.pack(fill='x', padx=15, pady=(8, 0))
+
+        self.btn_txt = ttk.Button(ferramentas, text="📄 TXT", command=lambda: abrir_arquivo(ARQUIVO_TXT), width=6)
+        self.btn_txt.pack(side="left", padx=(0, 5))
+
+        self.btn_csv = ttk.Button(ferramentas, text="📊 Excel", command=lambda: abrir_arquivo(ARQUIVO_CSV), width=7)
+        self.btn_csv.pack(side="left")
+
+        self.var_autostart = tk.BooleanVar(value=verificar_autostart())
+        chk_autostart = tk.Checkbutton(ferramentas, text="Iniciar com Windows", var=self.var_autostart, command=self.toggle_autostart, bg=COR_CARTAO, fg=self.COR_SECUNDARIA, activebackground=COR_CARTAO, selectcolor=COR_CARTAO, font=("Segoe UI", 8))
+        chk_autostart.pack(side="right")
+
+        # Resultado do Teste
         self.lbl_st_result = tk.Label(self.card, text="", font=("Segoe UI", 9, "bold"), bg=COR_CARTAO, fg="#0D6EFD")
-        self.lbl_st_result.pack(pady=(10, 0))
+        self.lbl_st_result.pack(pady=(5, 0))
 
         rodape = tk.Label(self.root, text="Desenvolvido por Matheus Carvalho", font=("Segoe UI", 7), bg=COR_FUNDO, fg="#ADB5BD")
         rodape.pack(side="bottom", pady=2)
 
-        # Variáveis de Estado (Máquina de Estados)
         self.provedor_atual = "Desconhecido"
-        self.estado_atual = "INICIANDO" # Pode ser: NORMAL, LENTA, CAIDA
+        self.estado_atual = "INICIANDO"
         self.primeira_execucao = True
         
-        registrar_log("=== MONITOR INICIADO ===")
+        registrar_log("Monitor Iniciado pelo Usuário")
         threading.Thread(target=self.monitorar_loop, daemon=True).start()
 
     def esconder_janela(self):
@@ -136,6 +192,39 @@ class MonitorApp:
     def mostrar_janela(self):
         self.root.after(0, self.root.deiconify)
         self.root.after(0, self.root.lift)
+
+    def toggle_autostart(self):
+        configurar_autostart(self.var_autostart.get())
+
+    def gerar_resumo(self):
+        if not os.path.exists(ARQUIVO_CSV):
+            messagebox.showinfo("Resumo", "Nenhum dado registrado ainda.")
+            return
+        
+        quedas, lentidoes, trocas_claro = 0, 0, 0
+        try:
+            with open(ARQUIVO_CSV, "r", encoding="utf-8-sig") as f:
+                reader = csv.DictReader(f, delimiter=';')
+                for row in reader:
+                    evento = row.get("Evento", "").lower()
+                    prov = row.get("Provedor", "").upper()
+                    
+                    if "queda" in evento or "desconectado" in evento: quedas += 1
+                    if "lenta" in evento or "instabilidade" in evento: lentidoes += 1
+                    if "troca" in evento and "CLARO" in prov: trocas_claro += 1
+            
+            relatorio = (
+                "📊 RELATÓRIO GERENCIAL DE REDE\n"
+                "--------------------------------------------------\n"
+                f"🚫 Quedas Totais de Internet: {quedas}\n"
+                f"⚠️ Alertas de Lentidão / Instabilidade: {lentidoes}\n"
+                f"🔄 Ativações do Provedor Claro (Backup): {trocas_claro}\n"
+                "--------------------------------------------------\n"
+                "Use os botões 'TXT' ou 'Excel' para ver horários exatos."
+            )
+            messagebox.showinfo("Resumo de Ocorrências", relatorio)
+        except Exception:
+            messagebox.showerror("Erro", "Não foi possível ler o histórico.")
 
     def iniciar_teste_velocidade(self):
         self.btn_test.config(state="disabled")
@@ -155,7 +244,6 @@ class MonitorApp:
 
     def monitorar_loop(self):
         while True:
-            # 1. Identificação do Provedor
             try:
                 st = speedtest.Speedtest(secure=True)
                 prov_bruto = st.config['client']['isp']
@@ -167,11 +255,8 @@ class MonitorApp:
                     prov_bruto = "Sem Conexão"
 
             provedor = limpar_nome_provedor(prov_bruto)
-            
-            # 2. Medição (Gatilho ajustado para 150ms)
             latencia = checar_latencia_ip("8.8.8.8", 53)
             
-            # 3. Definição do Estado da Rede
             if latencia == 9999 or provedor == "Sem Conexão":
                 novo_estado = "CAIDA"
                 provedor = "Sem Conexão"
@@ -180,43 +265,35 @@ class MonitorApp:
             else:
                 novo_estado = "NORMAL"
 
-            # IGNORAR ALERTAS NA PRIMEIRA LEITURA
             if self.primeira_execucao:
                 self.estado_atual = novo_estado
                 self.provedor_atual = provedor
                 self.primeira_execucao = False
                 if provedor != "Sem Conexão":
                     notification.notify(title="Monitor Ativo", message=f"Conectado via {provedor}.", app_name="Monitor de Rede", timeout=5)
-                    registrar_log(f"CONEXÃO INICIAL: Estabelecida através da {provedor}")
+                    registrar_log("Monitoramento Iniciado", provedor)
             else:
-                # LOGICA DE NOTIFICAÇÃO BLINDADA
-                
-                # A) Caiu a internet
+                # Notificações e Auditoria
                 if novo_estado == "CAIDA" and self.estado_atual != "CAIDA":
                     notification.notify(title="Falha Crítica!", message="A conexão com a internet caiu.", app_name="Monitor", timeout=5)
-                    registrar_log("QUEDA TOTAL: Conexão com a internet foi perdida.")
+                    registrar_log("Queda Total (Desconectado)", "Sem Conexão")
                 
-                # B) A internet voltou (Reconexão)
                 elif novo_estado != "CAIDA" and self.estado_atual == "CAIDA":
                     notification.notify(title="Internet Restaurada", message=f"Reconectado através da {provedor}.", app_name="Monitor", timeout=5)
-                    registrar_log(f"RECONEXÃO: Internet reestabelecida via {provedor}.")
+                    registrar_log("Conexão Restaurada", provedor)
                 
-                # C) Trocou o provedor (Sem queda total percebida)
                 elif novo_estado != "CAIDA" and self.estado_atual != "CAIDA" and provedor != self.provedor_atual:
                     notification.notify(title="Mudança de Rota", message=f"O provedor mudou de {self.provedor_atual} para {provedor}.", app_name="Monitor", timeout=5)
-                    registrar_log(f"TROCA DE PROVEDOR: Rota alterada de '{self.provedor_atual}' para '{provedor}'.")
+                    registrar_log(f"Troca de Provedor Detectada (Era {self.provedor_atual})", provedor)
                 
-                # D) Começou a ficar lenta (Acima de 150ms)
                 if novo_estado == "LENTA" and self.estado_atual == "NORMAL":
                     notification.notify(title="Instabilidade", message=f"Rede lenta. Latência de {latencia}ms.", app_name="Monitor", timeout=5)
-                    registrar_log(f"ALERTA LENTIDÃO: Rota via {provedor} registrou {latencia}ms.")
+                    registrar_log(f"Lentidão / Instabilidade ({latencia}ms)", provedor)
                 
-                # E) Voltou a ficar rápida
                 elif novo_estado == "NORMAL" and self.estado_atual == "LENTA":
                     notification.notify(title="Rede Normalizada", message="A latência da rede voltou ao normal.", app_name="Monitor", timeout=5)
-                    registrar_log(f"RESTAURAÇÃO: A estabilidade do provedor {provedor} voltou ao normal.")
+                    registrar_log("Estabilidade Normalizada", provedor)
 
-            # Atualizar Interface Visual
             cor_icone = self.COR_ALERTA if novo_estado == "CAIDA" else (self.COR_ATENCAO if novo_estado == "LENTA" else self.COR_SUCESSO)
             icone_txt = "🔴" if novo_estado == "CAIDA" else ("🟡" if novo_estado == "LENTA" else "🟢")
             txt_estado = "Desconectado" if novo_estado == "CAIDA" else ("Instável / Lenta" if novo_estado == "LENTA" else "Conexão Estável")
@@ -225,7 +302,6 @@ class MonitorApp:
             self.root.after(0, lambda p=provedor: self.lbl_provedor.config(text=f"Provedor: {p}"))
             self.root.after(0, lambda l=latencia: self.lbl_latencia.config(text=f"Latência: {'--' if l==9999 else l} ms"))
 
-            # Salvar estado para a próxima rodada
             self.estado_atual = novo_estado
             self.provedor_atual = provedor
             
@@ -240,7 +316,7 @@ def criar_icone():
 def iniciar_bandeja(app):
     def on_abrir(icon, item): app.mostrar_janela()
     def on_sair(icon, item):
-        registrar_log("=== MONITOR ENCERRADO PELO USUÁRIO ===")
+        registrar_log("Monitor Encerrado pelo Usuário", app.provedor_atual)
         icon.stop()
         app.root.quit()
         sys.exit()
