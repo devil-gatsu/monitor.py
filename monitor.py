@@ -17,7 +17,6 @@ import requests
 import xml.etree.ElementTree as ET
 from pystray import Icon, Menu, MenuItem
 from PIL import Image, ImageDraw
-from plyer import notification
 import socket
 import csv
 import winreg
@@ -26,14 +25,7 @@ import winreg
 ARQUIVO_TXT = "auditoria_rede.txt"
 ARQUIVO_CSV = "auditoria_rede.csv"
 
-# --- FUNÇÕES DE LÓGICA E DIAGNÓSTICO ---
-
-def enviar_notificacao(titulo, mensagem):
-    """Blinda o disparo de notificações para não travar o programa se o Windows bloquear"""
-    try:
-        notification.notify(title=titulo, message=mensagem, app_name="Monitor de Rede", timeout=5)
-    except Exception:
-        pass # Ignora o erro da notificação e mantém o programa rodando
+# --- FUNÇÕES DE LÓGICA GERAL ---
 
 def registrar_log(evento, provedor="--"):
     data = time.strftime("%d/%m/%Y")
@@ -86,9 +78,11 @@ def verificar_autostart():
 
 def limpar_nome_provedor(nome_bruto):
     nome = nome_bruto.upper()
-    if "TELEF" in nome or "VIVO" in nome: return "Vivo"
-    elif "CLARO" in nome or "NET" in nome or "EMBRATEL" in nome: return "Claro"
-    elif "ALLREDE" in nome: return "Allrede Telecom"
+    # Filtro rígido para entregar apenas Vivo ou Claro
+    if "TELEF" in nome or "VIVO" in nome or "WGO" in nome: 
+        return "Vivo"
+    elif "CLARO" in nome or "NET" in nome or "EMBRATEL" in nome: 
+        return "Claro"
     return nome_bruto.title()
 
 def checar_latencia_ip(ip="8.8.8.8", porta=53):
@@ -110,6 +104,8 @@ class MonitorApp:
         self.root.geometry("380x280")
         self.root.resizable(False, False)
         self.root.protocol('WM_DELETE_WINDOW', self.esconder_janela)
+
+        self.tray_icon = None # Variável para controlar o ícone e as notificações
 
         COR_FUNDO = "#F8F9FA"
         COR_CARTAO = "#FFFFFF"
@@ -185,6 +181,14 @@ class MonitorApp:
         registrar_log("Monitor Iniciado pelo Usuário")
         threading.Thread(target=self.monitorar_loop, daemon=True).start()
 
+    def enviar_notificacao(self, titulo, mensagem):
+        """Nova notificação 100% nativa embutida no ícone da bandeja"""
+        if self.tray_icon is not None:
+            try:
+                self.tray_icon.notify(mensagem, title=titulo)
+            except Exception:
+                pass
+
     def esconder_janela(self):
         self.root.withdraw()
 
@@ -242,9 +246,11 @@ class MonitorApp:
             self.root.after(0, lambda: self.btn_test.config(state="normal"))
 
     def monitorar_loop(self):
+        # Pequeno delay para garantir que o ícone da bandeja carregou antes de tentar notificar
+        time.sleep(2) 
+        
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
         while True:
-            # 1. Leitura Rápida
             try:
                 r_st = requests.get("https://www.speedtest.net/speedtest-config.php", headers=headers, timeout=5)
                 root = ET.fromstring(r_st.content)
@@ -268,7 +274,6 @@ class MonitorApp:
             else:
                 novo_estado = "NORMAL"
 
-            # 2. ATUALIZA A TELA IMEDIATAMENTE ANTES DE TENTAR NOTIFICAR
             cor_icone = self.COR_ALERTA if novo_estado == "CAIDA" else (self.COR_ATENCAO if novo_estado == "LENTA" else self.COR_SUCESSO)
             icone_txt = "🔴" if novo_estado == "CAIDA" else ("🟡" if novo_estado == "LENTA" else "🟢")
             txt_estado = "Desconectado" if novo_estado == "CAIDA" else ("Instável / Lenta" if novo_estado == "LENTA" else "Conexão Estável")
@@ -277,33 +282,33 @@ class MonitorApp:
             self.root.after(0, lambda p=provedor: self.lbl_provedor.config(text=f"Provedor: {p}"))
             self.root.after(0, lambda l=latencia: self.lbl_latencia.config(text=f"Latência: {'--' if l==9999 else l} ms"))
 
-            # 3. NOTIFICAÇÕES E LOGS (AGORA BLINDADOS)
+            # Lógica de Notificação com a função nativa corrigida
             if self.primeira_execucao:
                 self.estado_atual = novo_estado
                 self.provedor_atual = provedor
                 self.primeira_execucao = False
                 if provedor != "Sem Conexão":
-                    enviar_notificacao("Monitor Ativo", f"Conectado via {provedor}.")
+                    self.enviar_notificacao("Monitor Ativo", f"Conectado via {provedor}.")
                     registrar_log("Monitoramento Iniciado", provedor)
             else:
                 if novo_estado == "CAIDA" and self.estado_atual != "CAIDA":
-                    enviar_notificacao("Falha Crítica!", "A conexão com a internet caiu.")
+                    self.enviar_notificacao("Falha Crítica!", "A conexão com a internet caiu.")
                     registrar_log("Queda Total (Desconectado)", "Sem Conexão")
                 
                 elif novo_estado != "CAIDA" and self.estado_atual == "CAIDA":
-                    enviar_notificacao("Internet Restaurada", f"Reconectado através da {provedor}.")
+                    self.enviar_notificacao("Internet Restaurada", f"Reconectado através da {provedor}.")
                     registrar_log("Conexão Restaurada", provedor)
                 
                 elif novo_estado != "CAIDA" and self.estado_atual != "CAIDA" and provedor != self.provedor_atual:
-                    enviar_notificacao("Mudança de Rota", f"O provedor mudou de {self.provedor_atual} para {provedor}.")
+                    self.enviar_notificacao("Mudança de Rota", f"O provedor mudou de {self.provedor_atual} para {provedor}.")
                     registrar_log(f"Troca de Provedor Detectada (Era {self.provedor_atual})", provedor)
                 
                 if novo_estado == "LENTA" and self.estado_atual == "NORMAL":
-                    enviar_notificacao("Instabilidade", f"Rede lenta. Latência de {latencia}ms.")
+                    self.enviar_notificacao("Instabilidade", f"Rede lenta. Latência de {latencia}ms.")
                     registrar_log(f"Lentidão / Instabilidade ({latencia}ms)", provedor)
                 
                 elif novo_estado == "NORMAL" and self.estado_atual == "LENTA":
-                    enviar_notificacao("Rede Normalizada", "A latência da rede voltou ao normal.")
+                    self.enviar_notificacao("Rede Normalizada", "A latência da rede voltou ao normal.")
                     registrar_log("Estabilidade Normalizada", provedor)
 
             self.estado_atual = novo_estado
@@ -326,7 +331,9 @@ def iniciar_bandeja(app):
         sys.exit()
 
     menu = Menu(MenuItem("Abrir Painel", on_abrir, default=True), MenuItem("Sair", on_sair))
-    Icon("MonitorRede", criar_icone(), menu=menu).run()
+    icone = Icon("MonitorRede", criar_icone(), menu=menu)
+    app.tray_icon = icone # Conecta o ícone da bandeja ao app para liberar as notificações nativas
+    icone.run()
 
 if __name__ == '__main__':
     app = MonitorApp()
