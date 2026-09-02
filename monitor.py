@@ -28,6 +28,13 @@ ARQUIVO_CSV = "auditoria_rede.csv"
 
 # --- FUNÇÕES DE LÓGICA E DIAGNÓSTICO ---
 
+def enviar_notificacao(titulo, mensagem):
+    """Blinda o disparo de notificações para não travar o programa se o Windows bloquear"""
+    try:
+        notification.notify(title=titulo, message=mensagem, app_name="Monitor de Rede", timeout=5)
+    except Exception:
+        pass # Ignora o erro da notificação e mantém o programa rodando
+
 def registrar_log(evento, provedor="--"):
     data = time.strftime("%d/%m/%Y")
     hora = time.strftime("%H:%M:%S")
@@ -128,7 +135,7 @@ class MonitorApp:
         self.lbl_icone = tk.Label(cabecalho, text="⚫", font=("Segoe UI", 14), bg=COR_CARTAO, fg=self.COR_SECUNDARIA)
         self.lbl_icone.pack(side="left")
         
-        self.lbl_status_geral = tk.Label(cabecalho, text="Aguardando...", font=("Segoe UI", 11, "bold"), bg=COR_CARTAO, fg=self.COR_TEXTO)
+        self.lbl_status_geral = tk.Label(cabecalho, text="Iniciando...", font=("Segoe UI", 11, "bold"), bg=COR_CARTAO, fg=self.COR_TEXTO)
         self.lbl_status_geral.pack(side="left", padx=5)
 
         detalhes = tk.Frame(self.card, bg=COR_CARTAO)
@@ -235,10 +242,11 @@ class MonitorApp:
             self.root.after(0, lambda: self.btn_test.config(state="normal"))
 
     def monitorar_loop(self):
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
         while True:
-            # RETORNO PARA A LÓGICA ORIGINAL E RÁPIDA
+            # 1. Leitura Rápida
             try:
-                r_st = requests.get("https://www.speedtest.net/speedtest-config.php", timeout=5)
+                r_st = requests.get("https://www.speedtest.net/speedtest-config.php", headers=headers, timeout=5)
                 root = ET.fromstring(r_st.content)
                 cliente = root.find('client')
                 prov_bruto = cliente.attrib.get('isp', "Desconhecido") if cliente is not None else "Desconhecido"
@@ -260,34 +268,7 @@ class MonitorApp:
             else:
                 novo_estado = "NORMAL"
 
-            if self.primeira_execucao:
-                self.estado_atual = novo_estado
-                self.provedor_atual = provedor
-                self.primeira_execucao = False
-                if provedor != "Sem Conexão":
-                    notification.notify(title="Monitor Ativo", message=f"Conectado via {provedor}.", app_name="Monitor de Rede", timeout=5)
-                    registrar_log("Monitoramento Iniciado", provedor)
-            else:
-                if novo_estado == "CAIDA" and self.estado_atual != "CAIDA":
-                    notification.notify(title="Falha Crítica!", message="A conexão com a internet caiu.", app_name="Monitor", timeout=5)
-                    registrar_log("Queda Total (Desconectado)", "Sem Conexão")
-                
-                elif novo_estado != "CAIDA" and self.estado_atual == "CAIDA":
-                    notification.notify(title="Internet Restaurada", message=f"Reconectado através da {provedor}.", app_name="Monitor", timeout=5)
-                    registrar_log("Conexão Restaurada", provedor)
-                
-                elif novo_estado != "CAIDA" and self.estado_atual != "CAIDA" and provedor != self.provedor_atual:
-                    notification.notify(title="Mudança de Rota", message=f"O provedor mudou de {self.provedor_atual} para {provedor}.", app_name="Monitor", timeout=5)
-                    registrar_log(f"Troca de Provedor Detectada (Era {self.provedor_atual})", provedor)
-                
-                if novo_estado == "LENTA" and self.estado_atual == "NORMAL":
-                    notification.notify(title="Instabilidade", message=f"Rede lenta. Latência de {latencia}ms.", app_name="Monitor", timeout=5)
-                    registrar_log(f"Lentidão / Instabilidade ({latencia}ms)", provedor)
-                
-                elif novo_estado == "NORMAL" and self.estado_atual == "LENTA":
-                    notification.notify(title="Rede Normalizada", message="A latência da rede voltou ao normal.", app_name="Monitor", timeout=5)
-                    registrar_log("Estabilidade Normalizada", provedor)
-
+            # 2. ATUALIZA A TELA IMEDIATAMENTE ANTES DE TENTAR NOTIFICAR
             cor_icone = self.COR_ALERTA if novo_estado == "CAIDA" else (self.COR_ATENCAO if novo_estado == "LENTA" else self.COR_SUCESSO)
             icone_txt = "🔴" if novo_estado == "CAIDA" else ("🟡" if novo_estado == "LENTA" else "🟢")
             txt_estado = "Desconectado" if novo_estado == "CAIDA" else ("Instável / Lenta" if novo_estado == "LENTA" else "Conexão Estável")
@@ -295,6 +276,35 @@ class MonitorApp:
             self.root.after(0, lambda i=icone_txt, t=txt_estado, c=cor_icone: (self.lbl_icone.config(text=i, fg=c), self.lbl_status_geral.config(text=t)))
             self.root.after(0, lambda p=provedor: self.lbl_provedor.config(text=f"Provedor: {p}"))
             self.root.after(0, lambda l=latencia: self.lbl_latencia.config(text=f"Latência: {'--' if l==9999 else l} ms"))
+
+            # 3. NOTIFICAÇÕES E LOGS (AGORA BLINDADOS)
+            if self.primeira_execucao:
+                self.estado_atual = novo_estado
+                self.provedor_atual = provedor
+                self.primeira_execucao = False
+                if provedor != "Sem Conexão":
+                    enviar_notificacao("Monitor Ativo", f"Conectado via {provedor}.")
+                    registrar_log("Monitoramento Iniciado", provedor)
+            else:
+                if novo_estado == "CAIDA" and self.estado_atual != "CAIDA":
+                    enviar_notificacao("Falha Crítica!", "A conexão com a internet caiu.")
+                    registrar_log("Queda Total (Desconectado)", "Sem Conexão")
+                
+                elif novo_estado != "CAIDA" and self.estado_atual == "CAIDA":
+                    enviar_notificacao("Internet Restaurada", f"Reconectado através da {provedor}.")
+                    registrar_log("Conexão Restaurada", provedor)
+                
+                elif novo_estado != "CAIDA" and self.estado_atual != "CAIDA" and provedor != self.provedor_atual:
+                    enviar_notificacao("Mudança de Rota", f"O provedor mudou de {self.provedor_atual} para {provedor}.")
+                    registrar_log(f"Troca de Provedor Detectada (Era {self.provedor_atual})", provedor)
+                
+                if novo_estado == "LENTA" and self.estado_atual == "NORMAL":
+                    enviar_notificacao("Instabilidade", f"Rede lenta. Latência de {latencia}ms.")
+                    registrar_log(f"Lentidão / Instabilidade ({latencia}ms)", provedor)
+                
+                elif novo_estado == "NORMAL" and self.estado_atual == "LENTA":
+                    enviar_notificacao("Rede Normalizada", "A latência da rede voltou ao normal.")
+                    registrar_log("Estabilidade Normalizada", provedor)
 
             self.estado_atual = novo_estado
             self.provedor_atual = provedor
