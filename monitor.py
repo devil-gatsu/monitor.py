@@ -29,7 +29,6 @@ ARQUIVO_CSV = "auditoria_rede.csv"
 # --- FUNÇÕES DE LÓGICA E DIAGNÓSTICO ---
 
 def registrar_log(evento, provedor="--"):
-    """Gera o histórico simultaneamente em TXT e CSV (Excel)"""
     data = time.strftime("%d/%m/%Y")
     hora = time.strftime("%H:%M:%S")
     
@@ -95,7 +94,7 @@ def checar_latencia_ip(ip="8.8.8.8", porta=53):
         return 9999
     return int((time.time() - inicio) * 1000)
 
-# --- INTERFACE GRÁFICA (DASHBOARD GERENCIAL) ---
+# --- INTERFACE GRÁFICA ---
 
 class MonitorApp:
     def __init__(self):
@@ -237,18 +236,15 @@ class MonitorApp:
 
     def monitorar_loop(self):
         while True:
-            prov_bruto = "Desconhecido"
+            # RETORNO PARA A LÓGICA ORIGINAL E RÁPIDA
             try:
-                # 1. Leitura Ultrarrápida e Anti-Cache do Roteador (Dual-WAN)
-                url_anti_cache = f"https://www.speedtest.net/speedtest-config.php?nocache={int(time.time())}"
-                r = requests.get(url_anti_cache, timeout=4)
-                root = ET.fromstring(r.content)
+                r_st = requests.get("https://www.speedtest.net/speedtest-config.php", timeout=5)
+                root = ET.fromstring(r_st.content)
                 cliente = root.find('client')
-                if cliente is not None:
-                    prov_bruto = cliente.attrib.get('isp', "Desconhecido")
+                prov_bruto = cliente.attrib.get('isp', "Desconhecido") if cliente is not None else "Desconhecido"
             except Exception:
                 try:
-                    r_api = requests.get("http://ip-api.com/json/", timeout=4)
+                    r_api = requests.get("http://ip-api.com/json/", timeout=5)
                     prov_bruto = r_api.json().get('isp', "Desconhecido")
                 except Exception:
                     prov_bruto = "Sem Conexão"
